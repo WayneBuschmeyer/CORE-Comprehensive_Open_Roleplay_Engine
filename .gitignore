@@ -1,12 +1,41 @@
+# Existing entries
 CMakeLists.txt.user
 CMakeCache.txt
-CMakeFiles
-CMakeScripts
-Testing
+CMakeFiles/
+CMakeScripts/
+Testing/
 Makefile
 cmake_install.cmake
 install_manifest.txt
 compile_commands.json
 CTestTestfile.cmake
-_deps
+_deps/
 CMakeUserPresets.json
+
+# Common build directories
+build/
+bin/
+lib/
+out/
+
+# OS-specific
+.DS_Store
+Thumbs.db
+
+# Editor/IDE-specific
+.vscode/
+.idea/
+*.swp
+*.user
+*.suo
+*.vcxproj*
+*.opensdf
+*.pdb
+*.sln
+
+# Coverage/logs (optional)
+*.gcda
+*.gcno
+*.info
+coverage/
+logs/
