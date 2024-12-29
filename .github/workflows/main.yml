@@ -1,0 +1,127 @@
+name: CI
+
+# Recommended concurrency to prevent overlapping runs on the same branch:
+# concurrency: ci-${{ github.ref }}
+
+on:
+  push:
+    branches: [ "main", "development", "nightly" ]
+  pull_request:
+    branches: [ "main", "development", "nightly" ]
+
+jobs:
+  build-and-test:
+    name: Build and Test (Multi-Platform)
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        # Example: If you want different compiler versions on Linux:
+        # os: [ubuntu-20.04, ubuntu-22.04]
+        # compiler: [gcc-11, clang-13]
+        # You would then reference matrix.compiler in your steps.
+
+    steps:
+      # 1. Check out code
+      - name: Check out repository
+        uses: actions/checkout@v3
+
+      # 2. (Optional) Set up consistent environment variables if using ccache
+      #    This helps ensure ccache is used consistently across runs.
+      - name: Set environment for ccache (non-Windows)
+        if: runner.os != 'Windows'
+        run: |
+          echo "CCACHE_COMPRESS=1" >> $GITHUB_ENV
+          echo "CCACHE_COMPRESSLEVEL=5" >> $GITHUB_ENV
+          echo "CCACHE_BASEDIR=${{ github.workspace }}" >> $GITHUB_ENV
+          echo "CCACHE_NOHASHDIR=1" >> $GITHUB_ENV
+
+      # 3. Cache ccache on Linux/macOS
+      - name: Cache ccache
+        if: runner.os != 'Windows'
+        uses: actions/cache@v3
+        with:
+          path: ~/.ccache
+          key: ${{ runner.os }}-ccache-${{ hashFiles('**/CMakeLists.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-ccache-
+
+      # 4. Install Dependencies
+      - name: Install dependencies (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            ninja-build \
+            ccache \
+            lcov \
+            clang-tidy
+          # Add any other Linux dependencies here.
+
+      - name: Install dependencies (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          brew update
+          brew install ninja ccache
+          # Add any other macOS dependencies here.
+
+      - name: Install dependencies (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          choco install ninja --confirm
+          # ccache is not typically used on Windows in the same way, but you can adapt if needed.
+          # Add any other Windows dependencies here.
+
+      # 5. Configure the build with CMake
+      #    Use -DCMAKE_CXX_COMPILER_LAUNCHER=ccache for Linux/macOS to enable ccache.
+      #    Adjust accordingly if you have a matrix of compilers or custom toolchains.
+      - name: Configure CMake
+        run: |
+          cmake -S . -B build \
+            -G Ninja \
+            -DCMAKE_BUILD_TYPE=Debug \
+            -DBUILD_TESTING=ON \
+            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+          # Add other CMake options here (e.g., coverage flags, sanitizers, etc.)
+          # For multi-compiler matrix, you might do:
+          # -DCMAKE_CXX_COMPILER=${{ matrix.compiler }}
+          # -DCMAKE_C_COMPILER=${{ matrix.compiler }} (or clang/gcc equivalent)
+
+      # 6. Build the project
+      - name: Build
+        run: cmake --build build
+
+      # 7. Run unit tests (e.g., Google Test)
+      #    Output on failure helps with debugging in CI logs.
+      - name: Run tests
+        run: ctest --test-dir build --output-on-failure
+
+      # 8. (Optional, Linux-only) Run clang-tidy static analysis
+      #    If you integrated clang-tidy with a CMake custom target named "tidy", you can build it here.
+      - name: Clang-Tidy Analysis
+        if: runner.os == 'Linux'
+        run: |
+          cmake --build build --target tidy
+          # Or, if not integrated into CMake, run clang-tidy manually:
+          # clang-tidy src/*.cpp -- (compiler options)
+
+      # 9. (Optional, Linux-only) Collect code coverage
+      #    Demonstrates using lcov to capture coverage data.
+      #    Adapt if using llvm-cov or other coverage tools.
+      - name: Collect coverage (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          lcov --directory . --capture --output-file coverage.info
+          lcov --remove coverage.info '/usr/*' '*/external/*' --output-file coverage.info
+          lcov --list coverage.info
+
+      # 10. (Optional) Upload coverage or other artifacts
+      - name: Upload coverage artifact
+        if: runner.os == 'Linux'
+        uses: actions/upload-artifact@v3
+        with:
+          name: coverage-report
+          path: coverage.info
+          if-no-files-found: ignore  # Avoid errors if coverage was not generated
